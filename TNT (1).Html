@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Visualización de Riesgos TNT (v12 - Estructura Final)</title>
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'dossier-bg': '#0D1117', /* Fondo oscuro profesional (gris pizarra) */
+                        'dossier-panel': '#1C212A', /* Panel interior más claro para contraste */
+                        'dossier-accent': '#00FF7F', /* Verde Neón - Interfaz */
+                        'tnt-primary': '#FFD700', /* Amarillo/Dorado - TNT */
+                        'tnt-danger': '#FF0033',  /* Rojo Vivo - Alerta */
+                        'tnt-medium': '#FF9900',  /* Naranja - Riesgo Medio */
+                        'tnt-safe': '#00BFFF',    /* Azul Cielo - Seguridad */
+                        /* Colores del juego */
+                        'game-bg': '#121a28', /* Fondo de juego sutilmente diferente */
+                        'game-accent': '#00e6e6', 
+                    },
+                    fontFamily: {
+                        mono: ['Consolas', 'Monaco', 'monospace'],
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: theme('colors.dossier-bg');
+            font-family: 'Inter', sans-serif;
+            color: #E2E8F0;
+        }
+        .nav-button {
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        .nav-button.active {
+            background-color: theme('colors.dossier-panel');
+            border-left-color: #00ff7f;
+            color: #00ff7f;
+            font-weight: bold;
+        }
+        .content-panel, .vis-panel {
+            background-color: theme('colors.dossier-panel');
+            border: 1px solid #00ff7f30;
+            border-radius: 0.5rem; /* Asegura esquinas redondeadas */
+            box-shadow: 0 0 8px #00ff7f20, inset 0 0 5px #00ff7f10;
+        }
+        .data-chip {
+            cursor: pointer;
+            transition: all 0.15s;
+            border: 1px solid #FFD70040;
+            background-color: #FFD70010;
+            user-select: none;
+        }
+        .data-chip:hover {
+            background-color: #FFD70030;
+            transform: scale(1.02);
+            border-color: #FFD700;
+        }
+        .danger-pulse {
+            animation: danger-pulse 1s infinite alternate;
+        }
+        @keyframes danger-pulse {
+            0% { box-shadow: 0 0 5px #FF0033; border-color: #FF0033; opacity: 0.8; }
+            100% { box-shadow: 0 0 20px #FF0033, 0 0 40px #FF003380; border-color: #FF0033; opacity: 1; }
+        }
+        /* Estilos para el nuevo acordeón */
+        .protocol-header {
+            cursor: pointer;
+            transition: background-color 0.2s;
+            border-left: 5px solid #00ff7f;
+        }
+        .protocol-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background-color: #1c212a;
+        }
+        .protocol-header.active + .protocol-content {
+            max-height: 500px; /* Suficiente para expandirse */
+        }
+        /* Estilos para el gráfico de barras (Riesgo NFPA) */
+        .bar-container {
+            height: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .bar {
+            height: 100%;
+            border-radius: 5px;
+        }
+        /* Estilos para la Línea de Tiempo */
+        .timeline-item {
+            position: relative;
+            padding-left: 20px;
+            border-left: 2px dashed #00ff7f60;
+            margin-left: 20px;
+        }
+        .timeline-item::before {
+            content: '•';
+            position: absolute;
+            left: -13px;
+            top: 0;
+            font-size: 1.5em;
+            line-height: 1;
+            color: #00ff7f;
+            font-weight: bold;
+        }
+
+        /* --- ESTILOS DEL NUEVO JUEGO (SECCIÓN 10) --- */
+        #game-interface {
+            background-color: theme('colors.game-bg');
+            border: 2px solid theme('colors.game-accent');
+            box-shadow: 0 0 15px theme('colors.game-accent', '50%'), inset 0 0 5px theme('colors.game-accent', '30%');
+        }
+        #code-display {
+            font-size: 4rem;
+            letter-spacing: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px theme('colors.tnt-safe');
+            min-height: 6rem;
+        }
+        .code-input-field {
+            letter-spacing: 1rem;
+            text-align: center;
+        }
+        .status-success {
+            background-color: theme('colors.tnt-safe', 0.2);
+            color: theme('colors.tnt-safe');
+            border: 1px solid theme('colors.tnt-safe');
+        }
+        .status-error {
+            background-color: theme('colors.tnt-danger', 0.2);
+            color: theme('colors.tnt-danger');
+            border: 1px solid theme('colors.tnt-danger');
+        }
+        .status-warning {
+            background-color: theme('colors.tnt-primary', 0.2);
+            color: theme('colors.tnt-primary');
+            border: 1px solid theme('colors.tnt-primary');
+        }
+        /* Estilos para el footer de autoría */
+        .authors-footer {
+            background-color: #12161c;
+            border-top: 1px solid #00ff7f30;
+            box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8 font-mono">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header Principal -->
+        <header class="text-center mb-8 pb-4 border-b-2 border-dossier-accent">
+            <h1 class="text-3xl sm:text-4xl font-extrabold tracking-widest text-dossier-accent">
+                2,4,6-TRINITROTOLUENO (TNT)
+            </h1>
+            <h2 class="text-lg font-light mt-1 text-gray-400">
+                DOSSIER DE INGENIERÍA DE RIESGOS (V12.0)
+            </h2>
+        </header>
+
+        <!-- Contenedor Principal (Grid para layout asimétrico) -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            
+            <!-- COLUMNA 1: Navegación y Panel de Detalle (1/4) -->
+            <div class="lg:col-span-1 space-y-6">
+                
+                <!-- Panel de Navegación -->
+                <nav id="nav-panel" class="p-4 rounded-lg bg-dossier-panel border border-dossier-accent/20">
+                    <h3 class="text-xl font-bold mb-4 text-tnt-primary border-b border-tnt-primary/50 pb-2">ACCESO RÁPIDO</h3>
+                    <div class="space-y-1 text-sm">
+                        <button class="nav-button w-full text-left p-2 rounded active" data-tab="1" onclick="switchTab(1)">1. Identificación</button>
+                        <button class="nav-button w-full text-left p-2 rounded" data-tab="2" onclick="switchTab(2)">2. Propiedades Físicas</button>
+                        <button class="nav-button w-full text-left p-2 rounded" data-tab="3" onclick="switchTab(3)">3. Propiedades Químicas</button>
+                        <button class="nav-button w-full text-left p-2 rounded text-tnt-danger font-bold" data-tab="4" onclick="switchTab(4)">4. Riesgos y Peligros</button>
+                        <button class="nav-button w-full text-left p-2 rounded" data-tab="5" onclick="switchTab(5)">5. Protocolos / Evacuación</button>
+                        <button class="nav-button w-full text-left p-2 rounded" data-tab="6" onclick="switchTab(6)">6. Perfil Toxicológico</button>
+                        <button class="nav-button w-full text-left p-2 rounded" data-tab="7" onclick="switchTab(7)">7. Impacto Ambiental</button>
+                        <button class="nav-button w-full text-left p-2 rounded" data-tab="8" onclick="switchTab(8)">8. Historia (Línea de Tiempo)</button>
+                        <button class="nav-button w-full text-left p-2 rounded" data-tab="9" onclick="switchTab(9)">9. Marco Reglamentario</button>
+                        <!-- SECCIÓN DE JUEGO -->
+                        <button class="nav-button w-full text-left p-2 rounded bg-tnt-danger/10 font-bold" data-tab="10" onclick="switchTab(10)">10. SIMULADOR DE CÓDIGOS 🕹️</button>
+                    </div>
+                </nav>
+
+                <!-- Panel Dinámico de Datos (Data Detail) -->
+                <div id="data-detail-panel" class="content-panel p-4 rounded-lg h-36 flex flex-col justify-center">
+                    <div id="data-key" class="text-base font-bold text-dossier-accent">Panel de Detalle de Datos</div>
+                    <div id="data-value" class="text-3xl font-extrabold text-tnt-primary mt-1">N/A</div>
+                    <div id="data-description" class="text-xs text-gray-400 mt-2">Haga clic en un chip de datos interactivo para obtener contexto de campo.</div>
+                </div>
+            </div>
+
+
+            <!-- COLUMNA 2: Contenido Principal y Visualización (3/4) -->
+            <div class="lg:col-span-3 space-y-6">
+                
+                <!-- Panel de Visualización Dinámico -->
+                <div id="visualization-panel" class="vis-panel p-4 rounded-lg h-60 flex flex-col justify-center items-center text-center">
+                    <!-- Contenido JS inyectará aquí la visualización basada en la pestaña activa -->
+                </div>
+
+                <!-- Contenido de la Sección Activa -->
+                <div id="active-content" class="content-panel p-6 rounded-lg min-h-[400px]">
+                    
+                    <!-- 1. Identificación del compuesto -->
+                    <div id="content-1" class="tab-content active space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">1. Identificación del Compuesto</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            <div class="p-3 bg-dossier-panel border-l-4 border-tnt-primary rounded">
+                                <span class="text-tnt-primary font-bold block">Nombre IUPAC:</span> 2-metil-1,3,5-trinitrobenceno.
+                            </div>
+                            <div class="p-3 bg-dossier-panel border-l-4 border-tnt-primary rounded">
+                                <span class="text-tnt-primary font-bold block">Fórmula Química:</span> <span class="text-tnt-primary font-mono">C<sub>7</sub>H<sub>5</sub>N<sub>3</sub>O<sub>6</sub></span>.
+                            </div>
+                            <div class="p-3 bg-dossier-panel border-l-4 border-tnt-primary rounded">
+                                <span class="text-tnt-primary font-bold block">Número CAS:</span> <span class="text-lg font-bold text-tnt-primary">118-96-7</span>.
+                            </div>
+                            <div class="p-3 bg-dossier-panel border-l-4 border-tnt-danger rounded">
+                                <span class="text-tnt-danger font-bold block">Clasificación UN:</span> UN 0209.
+                                <p class="text-xs text-gray-400">Mercancía Peligrosa Clase 1 (Explosivos). Requiere manejo según la normativa IATA/IMDG/ADR para sustancias explosivas.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 2. Propiedades físicas (Interactivo) -->
+                    <div id="content-2" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">2. Propiedades Físicas</h3>
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                            <div class="data-chip p-3 rounded-lg text-center" onclick="showDataDetail('Punto de Fusión (Tm)', '80.1 - 80.35 °C', 'Temperatura crítica para el procesamiento industrial (llenado de carcasas). Estabilidad térmica moderada.')">
+                                <span class="block text-tnt-primary text-xl font-bold">80.1 °C</span>
+                                <span class="block text-gray-400">Punto de Fusión</span>
+                            </div>
+                            <div class="data-chip p-3 rounded-lg text-center" onclick="showDataDetail('Densidad (ρ)', '1.65 g/cm³', 'Alta densidad del sólido cristalino, permitiendo una gran carga de masa explosiva por volumen.')">
+                                <span class="block text-tnt-primary text-xl font-bold">1.65 g/cm³</span>
+                                <span class="block text-gray-400">Densidad (Sólido)</span>
+                            </div>
+                            <div class="data-chip p-3 rounded-lg text-center" onclick="showDataDetail('Sensibilidad al Choque', 'Baja a Moderada', 'Menos sensible que la nitroglicerina. Requiere un detonador (cebo) para explosión.')">
+                                <span class="block text-tnt-primary text-xl font-bold">Baja</span>
+                                <span class="block text-gray-400">Sensibilidad al Choque</span>
+                            </div>
+                            <div class="p-3 rounded-lg bg-gray-700/20 text-center">
+                                <span class="block text-gray-300 text-lg font-bold">Amarillo Pálido</span>
+                                <span class="block text-gray-400 text-sm">Color Típico</span>
+                            </div>
+                        </div>
+                        <div class="my-6">
+                            <div class="p-3 bg-dossier-panel border-l-4 border-tnt-primary/50 rounded text-sm">
+                                <span class="text-tnt-primary font-bold block mb-1">Ebullición / Descomposición:</span>
+                                <p class="text-gray-300">No hierve sin descomponerse; sufre descomposición exotérmica a temperaturas elevadas, lo que puede llevar a una explosión. Evitar el calentamiento por encima de 150 °C.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Propiedades químicas (con gráfico de VoD) -->
+                    <div id="content-3" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">3. Propiedades Químicas y Energéticas</h3>
+                        
+                        <!-- Gráfico de Velocidad de Detonación (VoD) -->
+                        <div class="p-4 bg-dossier-panel rounded-lg border-l-4 border-tnt-primary">
+                            <span class="text-lg font-bold text-tnt-primary block mb-3">COMPARACIÓN DE VELOCIDAD DE DETONACIÓN (VoD)</span>
+                            <div class="space-y-2 text-xs">
+                                
+                                <div class="flex items-center">
+                                    <span class="w-16 font-bold text-tnt-primary">TNT:</span>
+                                    <div class="flex-1 ml-4 bar-container bg-yellow-900/50">
+                                        <div class="bar bg-tnt-primary" style="width: 58%;"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm font-extrabold text-tnt-primary">6900 m/s</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-16 font-bold text-gray-400">C-4:</span>
+                                    <div class="flex-1 ml-4 bar-container bg-gray-600/50">
+                                        <div class="bar bg-gray-400" style="width: 73%;"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm font-extrabold text-gray-400">8040 m/s</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-16 font-bold text-dossier-accent">PETN:</span>
+                                    <div class="flex-1 ml-4 bar-container bg-dossier-accent/50">
+                                        <div class="bar bg-dossier-accent" style="width: 82%;"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm font-extrabold text-dossier-accent">8400 m/s</span>
+                                </div>
+                                <p class="text-gray-500 italic pt-2">El TNT es un explosivo de "baja velocidad" comparado con los nitraminas, lo que afecta su brisance (poder de fragmentación).</p>
+                            </div>
+                        </div>
+
+                        <div class="p-4 bg-tnt-danger/20 rounded-lg border-2 border-tnt-danger">
+                            <span class="text-tnt-danger font-bold block mb-1 text-lg">ALERTA: INCOMPATIBILIDAD CRÍTICA</span>
+                            <p class="text-gray-200 text-sm">Reacciona violentamente con **agentes oxidantes fuertes**, **agentes reductores** y ciertos **metales**. La reacción puede ser altamente exotérmica y conducir a la detonación.</p>
+                        </div>
+                    </div>
+
+                    <!-- 4. Riesgos y peligros -->
+                    <div id="content-4" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-tnt-danger flex items-center border-b border-dossier-accent/30 pb-2">4. Riesgos y Peligros <span class="ml-3 text-sm px-2 py-0.5 rounded bg-tnt-danger text-white danger-pulse">ALERTA MÁXIMA</span></h3>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div class="p-4 bg-dossier-panel rounded-lg border-l-4 border-tnt-danger">
+                                <span class="text-tnt-danger font-bold block mb-1">Riesgo Primario (Físico):</span>
+                                <p class="text-gray-300">**Explosión Masiva.** Riesgo de detonación si está sujeto a fuego, calor intenso, confinamiento, fuerte choque o iniciadores. Las ondas de choque son el mayor peligro inmediato.</p>
+                            </div>
+                            <div class="p-4 bg-dossier-panel rounded-lg border-l-4 border-tnt-primary">
+                                <span class="text-tnt-primary font-bold block mb-1">Riesgo Secundario (Salud):</span>
+                                <p class="text-gray-300">**Tóxico por Múltiples Vías.** Ingestión, inhalación de polvo y absorción cutánea son peligrosas. Efectos crónicos en hígado, riñones y sistema sanguíneo.</p>
+                            </div>
+                        </div>
+
+                        <!-- Gráfico de Barras NFPA (Simulado) -->
+                        <div class="mt-6 p-4 bg-dossier-panel rounded-lg border border-gray-600">
+                            <span class="text-lg font-bold text-dossier-accent block mb-3">NFPA 704: Perfil de Riesgo (0-4)</span>
+                            
+                            <div class="space-y-3">
+                                <div class="flex items-center data-chip rounded-lg p-2" onclick="showDataDetail('NFPA - Salud (3)', 'Peligro Grave', 'Puede causar lesiones graves o permanentes por la exposición.')">
+                                    <span class="w-24 text-blue-500 font-bold">SALUD (AZUL):</span>
+                                    <div class="flex-1 ml-4 bar-container bg-blue-900/50">
+                                        <div class="bar bg-blue-500" style="width: 75%;"></div>
+                                    </div>
+                                    <span class="ml-2 text-xl text-blue-500 font-extrabold">3</span>
+                                </div>
+                                <div class="flex items-center data-chip rounded-lg p-2" onclick="showDataDetail('NFPA - Inflamabilidad (1)', 'Peligro Leve', 'Requiere precalentamiento para encenderse (sólido no inflamable en sí).')">
+                                    <span class="w-24 text-tnt-medium font-bold">FUEGO (ROJO):</span>
+                                    <div class="flex-1 ml-4 bar-container bg-red-900/50">
+                                        <div class="bar bg-red-500" style="width: 25%;"></div>
+                                    </div>
+                                    <span class="ml-2 text-xl text-red-500 font-extrabold">1</span>
+                                </div>
+                                <div class="flex items-center data-chip rounded-lg p-2" onclick="showDataDetail('NFPA - Reactividad (4)', 'Peligro Extremo (Explosivo)', 'Capaz de detonar o descomponerse explosivamente a temperatura y presión normales.')">
+                                    <span class="w-24 text-tnt-primary font-bold">REACTIVIDAD (AMARILLO):</span>
+                                    <div class="flex-1 ml-4 bar-container bg-yellow-900/50">
+                                        <div class="bar bg-yellow-500" style="width: 100%;"></div>
+                                    </div>
+                                    <span class="ml-2 text-xl text-yellow-500 font-extrabold">4</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. Precauciones y seguridad (Con Acordeón y Calculadora) -->
+                    <div id="content-5" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">5. Protocolos y Cálculo de Distancia Segura</h3>
+                        
+                        <!-- Calculadora de Distancia Segura -->
+                        <div class="p-4 bg-dossier-panel rounded-lg border-2 border-tnt-safe">
+                            <span class="text-lg font-bold text-tnt-safe block mb-3 flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.55 4.55a2 2 0 010 2.83l-1.414 1.414a2 2 0 01-2.83 0L10 15m4-4l-3-3m5 5l-2 2M16 8l3.65 3.65a2 2 0 010 2.83l-1.414 1.414a2 2 0 01-2.83 0L10 13m4-4l-3-3m5 5l-2 2M16 8l3.65 3.65a2 2 0 010 2.83l-1.414 1.414a2 2 0 01-2.83 0L10 13"/>
+                                </svg>
+                                CÁLCULO DE EVACUACIÓN (SIMULADO)
+                            </span>
+                            <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 items-end">
+                                <div class="flex-1 w-full">
+                                    <label for="tntMass" class="block text-xs font-medium text-gray-400 mb-1">Masa de TNT (kg):</label>
+                                    <input type="number" id="tntMass" value="10" min="0.1" step="1" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-tnt-primary focus:ring-tnt-safe focus:border-tnt-safe" oninput="calculateDistance()">
+                                </div>
+                                <button onclick="calculateDistance()" class="w-full sm:w-auto px-4 py-2 bg-tnt-safe text-dossier-bg font-bold rounded-lg hover:bg-opacity-90 transition duration-150">Calcular Zona Segura</button>
+                            </div>
+                            <div id="safeDistanceResult" class="mt-4 p-3 rounded text-center text-lg font-extrabold bg-tnt-safe/20 text-tnt-safe border border-tnt-safe">
+                                Distancia de seguridad (m): 54.0 m
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">Fórmula Taylor simplificada para presión de sobrepresión (riesgo de rotura de tímpano).</p>
+                        </div>
+                        
+                        <!-- Acordeón para Protocolos -->
+                        <div class="space-y-4 my-6">
+                            <div class="bg-gray-800 rounded-lg overflow-hidden">
+                                <div class="protocol-header p-4 flex justify-between items-center bg-gray-700/50 hover:bg-gray-700 rounded-t-lg" onclick="toggleProtocol(this)">
+                                    <span class="text-tnt-primary font-bold">TICKET 001: EQUIPO DE PROTECCIÓN (EPP)</span>
+                                    <span class="text-dossier-accent text-xl transition-transform transform rotate-0">+</span>
+                                </div>
+                                <div class="protocol-content p-4 text-sm text-gray-300">
+                                    <span class="font-bold block mb-1 text-tnt-primary">REQUISITOS CLAVE:</span>
+                                    <ul class="list-disc list-inside ml-4 space-y-1">
+                                        <li>**Protección Corporal:** Ropa protectora antiestática y antichispas. Debe cubrir toda la piel.</li>
+                                        <li>**Guantes:** Nitrilo o neopreno resistentes a la penetración de toluenos nitrados.</li>
+                                        <li>**Respiratoria:** Mascarilla con filtro P3 o SCBA (Equipo de Respiración Autónoma) en caso de emergencia.</li>
+                                        <li>**Ojos/Cara:** Gafas de seguridad selladas o pantalla facial completa.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="bg-gray-800 rounded-lg overflow-hidden">
+                                <div class="protocol-header p-4 flex justify-between items-center bg-gray-700/50 hover:bg-gray-700" onclick="toggleProtocol(this)">
+                                    <span class="text-tnt-primary font-bold">TICKET 002: MANEJO Y ALMACENAMIENTO</span>
+                                    <span class="text-dossier-accent text-xl transition-transform transform rotate-0">+</span>
+                                </div>
+                                <div class="protocol-content p-4 text-sm text-gray-300">
+                                    <span class="font-bold block mb-1 text-tnt-primary">DIRECTRICES:</span>
+                                    <ul class="list-disc list-inside ml-4 space-y-1">
+                                        <li>**Ubicación:** Polvorines o estructuras de almacenamiento Clase 1, aislados y con control de temperatura.</li>
+                                        <li>**Condiciones:** Mantener el material seco y fresco (idealmente por debajo de 30 °C). Evitar la luz solar directa.</li>
+                                        <li>**Incompatibles:** Aislar estrictamente de metales, ácidos, bases, y oxidantes/reductores.</li>
+                                        <li>**Herramientas:** Usar solo herramientas de bronce o materiales no ferrosos para prevenir chispas.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. Información toxicológica (Interactivo) -->
+                    <div id="content-6" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">6. Perfil Toxicológico</h3>
+                        
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                            <div class="data-chip p-3 rounded-lg text-center" onclick="showDataDetail('LD₅₀ Oral (Ratas)', '794-1320 mg/kg', 'Indica la toxicidad aguda por ingestión. Clasificado como sustancia Tóxica.')">
+                                <span class="block text-tnt-primary text-xl font-bold">794-1320 mg/kg</span>
+                                <span class="block text-gray-400">LD₅₀ Oral (Rata)</span>
+                            </div>
+                            <div class="data-chip p-3 rounded-lg text-center" onclick="showDataDetail('Vía de Exposición Principal', 'Absorción Cutánea', 'La piel absorbe fácilmente los vapores y el polvo. Esto es la principal vía de exposición crónica en entornos de trabajo.')">
+                                <span class="block text-tnt-danger text-lg font-bold">PIEL</span>
+                                <span class="block text-gray-400 text-sm">Vía de Entrada</span>
+                            </div>
+                            <div class="data-chip p-3 rounded-lg text-center bg-tnt-danger/30" onclick="showDataDetail('Efecto Crónico: Cianosis', 'Coloración azul de la piel y mucosas', 'Causada por la metahemoglobinemia (incapacidad de la hemoglobina para transportar oxígeno) debido a los metabolitos del TNT.')">
+                                <span class="block text-tnt-danger text-lg font-bold">CIANOSIS</span>
+                                <span class="block text-gray-400 text-sm">Consecuencia Crónica</span>
+                            </div>
+                            <div class="data-chip p-3 rounded-lg text-center" onclick="showDataDetail('Clasificación IARC', 'Grupo 3', 'No clasificable como carcinógeno para humanos (evidencia insuficiente).')">
+                                <span class="block text-tnt-primary text-lg font-bold">GRUPO 3</span>
+                                <span class="block text-gray-400 text-sm">Potencial Carcinógeno</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 p-3 bg-dossier-panel border-l-4 border-tnt-primary rounded text-sm">
+                            <span class="text-tnt-primary font-bold block mb-1">Órganos Blanco:</span>
+                            <p class="text-gray-300">El TNT afecta principalmente al **hígado** (hepatotoxicidad), **sistema hematológico** (anemia aplásica, metahemoglobinemia) y **riñones**.</p>
+                        </div>
+                    </div>
+
+                    <!-- 7. Impacto ambiental -->
+                    <div id="content-7" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">7. Impacto Ambiental</h3>
+                        <div class="space-y-4 text-sm">
+                            <div class="p-4 bg-dossier-panel rounded-lg border-l-4 border-dossier-accent">
+                                <span class="text-dossier-accent font-bold block mb-1">Ecotoxicidad:</span>
+                                <p class="text-gray-300">Extremadamente peligroso para organismos acuáticos y organismos bentónicos debido a su persistencia. La remediación de sitios contaminados con TNT es un proceso complejo y costoso.</p>
+                            </div>
+                            <div class="p-4 bg-dossier-panel rounded-lg border-l-4 border-dossier-accent">
+                                <span class="text-dossier-accent font-bold block mb-1">Persistencia:</span>
+                                <p class="text-gray-300">Relativamente persistente en el medio ambiente, especialmente en suelos anóxicos y sedimentos. Sus productos de degradación (aminodinitrotoluenos) pueden ser más tóxicos que el compuesto original.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 8. Historia (Línea de Tiempo) -->
+                    <div id="content-8" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">8. Historia y Contexto (Línea de Tiempo)</h3>
+                        <div class="space-y-6 text-sm">
+                            <div class="timeline-item">
+                                <div class="text-lg font-bold text-tnt-primary">1863: Síntesis Inicial</div>
+                                <div class="text-gray-400">El químico alemán Julius Wilbrand sintetiza por primera vez el TNT. Su uso inicial no fue como explosivo, sino como un tinte amarillo.</div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="text-lg font-bold text-tnt-primary">1891: Propiedades Explosivas</div>
+                                <div class="text-gray-400">Alemania comienza a producir TNT para uso militar. Se valoró su baja sensibilidad y estabilidad, lo que lo hacía seguro de manejar antes de la detonación.</div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="text-lg font-bold text-tnt-primary">1902: Adopción Masiva</div>
+                                <div class="text-gray-400">La Royal Artillery británica adopta el TNT, reemplazando a otros explosivos. Su uso se masifica en la I Guerra Mundial.</div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="text-lg font-bold text-tnt-primary">Actualidad: Estándar y Riesgo Crónico</div>
+                                <div class="text-gray-400">Sigue siendo el estándar de referencia (la "equivalencia TNT") para medir la potencia de otros explosivos y armas nucleares. El enfoque de riesgo se centra en la remediación de contaminación crónica.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 9. Información reglamentaria -->
+                    <div id="content-9" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">9. Marco Reglamentario</h3>
+                        
+                        <div class="p-4 bg-dossier-panel rounded-lg border-l-4 border-gray-400 text-sm">
+                            <span class="text-gray-400 font-bold block mb-1">Control de Sustancias:</span>
+                            <p class="text-gray-300">El TNT está sujeto a estricto control internacional y nacional debido a su doble uso (militar/industrial) y su alta peligrosidad.</p>
+                        </div>
+                        <div class="p-4 bg-dossier-panel rounded-lg border-l-4 border-gray-400 text-sm">
+                            <span class="text-gray-400 font-bold block mb-1">Límites de Exposición Ocupacional (OEL):</span>
+                            <p class="text-gray-300">Los límites de exposición en el lugar de trabajo son muy bajos (del orden de 0.5 mg/m³) debido al riesgo de toxicidad sistémica. Se requiere monitoreo biológico y ambiental constante.</p>
+                        </div>
+                    </div>
+
+                    <!-- 10. Simulador de Códigos (JUEGO DE MEMORIA Y REACCIÓN) -->
+                    <div id="content-10" class="tab-content space-y-6">
+                        <h3 class="text-2xl font-bold mb-4 text-dossier-accent border-b border-dossier-accent/30 pb-2">10. Simulador: Secuencia de Desactivación de Códigos</h3>
+                        
+                        <!-- Justificante Operacional -->
+                        <div class="p-3 bg-tnt-medium/10 border-l-4 border-tnt-medium mb-5 rounded text-sm">
+                            <span class="text-tnt-medium font-bold block mb-1">JUSTIFICANTE OPERACIONAL: PRESIÓN Y PROCEDIMIENTO</span>
+                            <p class="text-gray-300">En una emergencia con explosivos, la toma de decisiones debe ser inmediata y precisa. Este simulador entrena la capacidad cognitiva para **retener información crítica bajo estrés temporal** y ejecutar un protocolo (ingresar el código) sin errores. La mínima vacilación o error de memoria resulta en un fallo catastrófico (Game Over).</p>
+                        </div>
+
+                        <p class="text-sm text-gray-400 mb-4">Memoriza el código de 4 dígitos que aparece brevemente y escríbelo en el campo antes de que el tiempo se agote. ¡Solo tienes 2.0 segundos para ver el código!</p>
+
+                        <div id="game-interface" class="p-6 rounded-xl space-y-6">
+                            
+                            <!-- Panel de Información de la Misión -->
+                            <div class="flex justify-between items-center border-b border-gray-600 pb-3">
+                                <div class="text-sm font-mono">NIVEL (CÓDIGOS DESACTIVADOS): <span id="score-display" class="text-tnt-primary font-bold text-xl">0</span></div>
+                                <div class="text-xl font-mono">TIEMPO CRÍTICO: <span id="timer-display" class="text-tnt-danger font-bold text-2xl">--</span>s</div>
+                            </div>
+
+                            <!-- DISPLAY DEL CÓDIGO -->
+                            <div id="code-display" class="text-center text-tnt-safe py-6 rounded-lg bg-black/50 transition duration-300">
+                                ****
+                            </div>
+                            <p id="instruction-text" class="text-center text-sm font-bold text-gray-400">Presiona INICIAR para recibir el primer código de seguridad.</p>
+
+                            <!-- Campo de Entrada y Botón -->
+                            <div class="flex flex-col space-y-3">
+                                <input type="number" id="code-input" maxlength="4" placeholder="Introduce el código aquí" 
+                                       class="w-full p-4 rounded-lg bg-dossier-panel border-2 border-gray-600 text-tnt-primary code-input-field text-2xl font-mono" disabled>
+                                <button id="submit-button" onclick="checkCode()" class="w-full py-3 rounded-lg bg-gray-600 text-white text-xl font-extrabold hover:bg-gray-500 transition" disabled>
+                                    VERIFICAR CÓDIGO
+                                </button>
+                            </div>
+                            
+                            <!-- Área de Mensajes y Botón de Inicio -->
+                            <div id="message-area" class="text-center p-3 rounded-lg text-lg font-bold status-warning">
+                                ¡Simulación Lista!
+                            </div>
+
+                            <button id="start-button" onclick="startGame()" class="w-full py-3 rounded-lg bg-tnt-safe text-game-bg text-xl font-extrabold hover:bg-opacity-90 transition">
+                                INICIAR SIMULACIÓN
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer de Autoría -->
+        <footer class="authors-footer mt-10 p-4 text-center text-xs text-gray-500 rounded-lg">
+            <p class="font-bold text-dossier-accent mb-1">AUTORÍA DEL DOSSIER</p>
+            <p>Este recurso de ingeniería de riesgos fue desarrollado por:</p>
+            <p class="font-bold text-gray-300 mt-1">Lizmar Kanmerer y María Celeste Aroca</p>
+        </footer>
+
+    </div>
+
+    <script>
+        // Mapeo de la navegación y contenido
+        const contentMap = {
+            1: 'Identificación del Compuesto', 2: 'Propiedades Físicas', 3: 'Propiedades Químicas',
+            4: 'Riesgos y Peligros', 5: 'Protocolos / Evacuación', 6: 'Perfil Toxicológico',
+            7: 'Impacto Ambiental', 8: 'Historia (Línea de Tiempo)', 9: 'Marco Reglamentario',
+            10: 'Simulador: Secuencia de Desactivación'
+        };
+
+        // --- VARIABLES Y LÓGICA DEL JUEGO (SECCIÓN 10) ---
+        let score = 0;
+        let timer = 0;
+        let timerInterval;
+        let isGameRunning = false;
+        let codeToRemember = '';
+        let gameState = 'ready'; // ready, memorize, input, finished
+        
+        const MEMORIZE_TIME = 2.0; // Tiempo para ver el código
+        const INPUT_TIME = 5.0; // Tiempo para ingresar el código
+
+        const codeDisplay = document.getElementById('code-display');
+        const timerDisplay = document.getElementById('timer-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const messageArea = document.getElementById('message-area');
+        const startButton = document.getElementById('start-button');
+        const submitButton = document.getElementById('submit-button');
+        const codeInput = document.getElementById('code-input');
+        const instructionText = document.getElementById('instruction-text');
+
+        // Función auxiliar para gestionar la interfaz de mensajes
+        function updateMessage(message, type) {
+            if (!messageArea) return;
+            messageArea.textContent = message;
+            messageArea.className = 'text-center p-3 rounded-lg text-lg font-bold transition duration-300';
+            messageArea.classList.add(`status-${type}`);
+        }
+
+        function generateCode() {
+            // Genera un código aleatorio de 4 dígitos
+            return Math.floor(1000 + Math.random() * 9000).toString();
+        }
+
+        function resetGame() {
+            if (timerInterval) clearInterval(timerInterval);
+            isGameRunning = false;
+            score = 0;
+            scoreDisplay.textContent = '0';
+            timerDisplay.textContent = '--';
+            codeDisplay.textContent = '****';
+            codeInput.value = '';
+            codeInput.disabled = true;
+            submitButton.disabled = true;
+            startButton.classList.remove('hidden');
+            startButton.textContent = 'INICIAR SIMULACIÓN';
+            instructionText.textContent = 'Presiona INICIAR para recibir el primer código de seguridad.';
+            updateMessage("¡Simulación Lista!", 'warning');
+            gameState = 'ready';
+        }
+
+        function startGame() {
+            if (isGameRunning) return;
+            isGameRunning = true;
+            startButton.classList.add('hidden');
+            startButton.textContent = 'JUGAR DE NUEVO'; // Preparar para Game Over
+            nextRound();
+        }
+
+        function nextRound() {
+            if (!isGameRunning) return;
+
+            codeToRemember = generateCode();
+            timer = MEMORIZE_TIME;
+            gameState = 'memorize';
+
+            codeInput.value = '';
+            codeInput.disabled = true;
+            submitButton.disabled = true;
+            codeDisplay.textContent = codeToRemember;
+            codeDisplay.classList.add('text-tnt-safe');
+            codeDisplay.classList.remove('text-tnt-primary', 'text-gray-600', 'text-tnt-danger');
+            instructionText.textContent = 'MEMORIZA: ¡El código se autodestruirá en breve!';
+            updateMessage(`Nivel ${score + 1}: Código Generado.`, 'warning');
+
+            startTimerLoop();
+        }
+
+        function startInputPhase() {
+            if (!isGameRunning) return;
+
+            gameState = 'input';
+            timer = INPUT_TIME;
+
+            codeDisplay.textContent = '****';
+            codeDisplay.classList.remove('text-tnt-safe');
+            codeDisplay.classList.add('text-tnt-primary');
+            
+            codeInput.disabled = false;
+            submitButton.disabled = false;
+            codeInput.focus();
+            instructionText.textContent = 'INGRESA: Tienes poco tiempo para escribir el código...';
+            updateMessage(`Tiempo de ingreso. ¡Rápido!`, 'primary');
+        }
+
+        function startTimerLoop() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!isGameRunning) {
+                    clearInterval(timerInterval);
+                    return;
+                }
+
+                timer -= 0.1;
+                if(timerDisplay) timerDisplay.textContent = timer.toFixed(1);
+
+                if (timer <= 0) {
+                    clearInterval(timerInterval);
+                    if (gameState === 'memorize') {
+                        startInputPhase();
+                    } else if (gameState === 'input') {
+                        gameOver("¡TIEMPO AGOTADO! No ingresaste el código a tiempo.");
+                    }
+                }
+
+                // Alerta visual de tiempo crítico
+                if (timer <= 1.0 && gameState === 'input') {
+                    timerDisplay.classList.add('animate-pulse', 'text-tnt-danger');
+                } else {
+                    timerDisplay.classList.remove('animate-pulse', 'text-tnt-danger');
+                    timerDisplay.classList.add('text-tnt-primary');
+                }
+                
+            }, 100);
+        }
+
+        function checkCode() {
+            if (gameState !== 'input' || !isGameRunning) return;
+
+            const inputCode = codeInput.value.trim();
+
+            if (inputCode.length !== 4) {
+                updateMessage("¡Código Incompleto! Debe ser de 4 dígitos.", 'warning');
+                return;
+            }
+
+            if (inputCode === codeToRemember) {
+                score++;
+                scoreDisplay.textContent = score;
+                clearInterval(timerInterval);
+                updateMessage(`¡ÉXITO! Código ${codeToRemember} desactivado. Preparando siguiente nivel.`, 'success');
+                
+                // Retraso para que el usuario pueda ver el resultado
+                setTimeout(nextRound, 1500); 
+            } else {
+                gameOver(`¡ERROR! Código incorrecto. El código correcto era: ${codeToRemember}.`);
+            }
+        }
+        
+        // Manejo de Enter para Submit
+        codeInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && gameState === 'input' && !submitButton.disabled) {
+                checkCode();
+            }
+        });
+
+
+        function gameOver(message) {
+            isGameRunning = false;
+            clearInterval(timerInterval);
+            gameState = 'finished';
+
+            timerDisplay.textContent = '0.0';
+            timerDisplay.classList.remove('animate-pulse');
+            codeInput.disabled = true;
+            submitButton.disabled = true;
+            startButton.classList.remove('hidden');
+            instructionText.textContent = `Puntuación Final: ${score} códigos desactivados.`;
+            updateMessage(`FALLO EN EL PROTOCOLO: ${message}`, 'error');
+            
+            // Muestra el código si falló en la fase de ingreso
+            if (codeToRemember && codeDisplay) {
+                codeDisplay.textContent = codeToRemember;
+                codeDisplay.classList.remove('text-tnt-primary');
+                codeDisplay.classList.add('text-tnt-danger');
+            }
+        }
+
+
+        // --- FUNCIONES DEL DOSSIER ORIGINAL ---
+
+        // Función para actualizar el panel dinámico de datos (interacción clave)
+        function showDataDetail(key, value, description) {
+            document.getElementById('data-key').textContent = key;
+            document.getElementById('data-value').textContent = value;
+            document.getElementById('data-description').textContent = description;
+
+            const panel = document.getElementById('data-detail-panel');
+            panel.style.transition = 'none';
+            panel.style.transform = 'scale(0.98)';
+            setTimeout(() => {
+                panel.style.transition = 'all 0.15s ease-out';
+                panel.style.transform = 'scale(1)';
+            }, 10);
+        }
+
+        // Función para cambiar de pestaña (sección) y actualizar la visualización (INNOVACIÓN)
+        function switchTab(tabNumber) {
+            // Detiene el juego si no estamos en la pestaña 10
+            if (tabNumber !== 10 && isGameRunning) {
+                gameOver("Juego pausado. Vuelve a la sección 10 para reanudar.");
+            }
+            
+            document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            document.querySelector(`.nav-button[data-tab="${tabNumber}"]`).classList.add('active');
+            document.getElementById(`content-${tabNumber}`).classList.add('active');
+
+            document.getElementById('data-key').textContent = contentMap[tabNumber];
+            document.getElementById('data-value').textContent = "DATA STATUS";
+            document.getElementById('data-description').textContent = "Explore la información detallada para más contexto.";
+
+            document.querySelectorAll('.protocol-header').forEach(header => {
+                header.classList.remove('active');
+                header.querySelector('span:last-child').style.transform = 'rotate(0deg)';
+                header.nextElementSibling.style.maxHeight = '0';
+            });
+
+            updateVisualization(tabNumber);
+        }
+
+        // Función para manejar el acordeón
+        function toggleProtocol(header) {
+            const content = header.nextElementSibling;
+            const icon = header.querySelector('span:last-child');
+            
+            document.querySelectorAll('.protocol-header').forEach(h => {
+                if (h !== header && h.classList.contains('active')) {
+                    h.classList.remove('active');
+                    h.querySelector('span:last-child').style.transform = 'rotate(0deg)';
+                    h.nextElementSibling.style.maxHeight = '0';
+                }
+            });
+
+            if (header.classList.contains('active')) {
+                header.classList.remove('active');
+                content.style.maxHeight = '0';
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                header.classList.add('active');
+                content.style.maxHeight = content.scrollHeight + "px"; 
+                icon.style.transform = 'rotate(45deg)';
+            }
+        }
+
+        // FUNCIÓN CLAVE: CALCULADORA DE DISTANCIA SEGURA
+        function calculateDistance() {
+            const massInput = document.getElementById('tntMass');
+            const resultDiv = document.getElementById('safeDistanceResult');
+            const W = parseFloat(massInput.value);
+
+            if (isNaN(W) || W <= 0) {
+                resultDiv.textContent = "Error: Ingrese una masa de TNT válida (> 0 kg)";
+                resultDiv.classList.remove('bg-tnt-safe/20', 'text-tnt-safe');
+                resultDiv.classList.add('bg-tnt-danger/20', 'text-tnt-danger');
+                return;
+            }
+
+            const K = 5.4; 
+            const D = K * Math.pow(W, (1/3));
+            
+            resultDiv.textContent = `Distancia de seguridad (m): ${D.toFixed(1)} m`;
+            resultDiv.classList.add('bg-tnt-safe/20', 'text-tnt-safe');
+            resultDiv.classList.remove('bg-tnt-danger/20', 'text-tnt-danger');
+
+            showDataDetail('Distancia Segura', `${D.toFixed(1)} m`, `Distancia recomendada para evitar daños por sobrepresión del aire causada por la detonación de ${W} kg de TNT.`);
+        }
+
+        // Función que gestiona el contenido del panel de visualización
+        function updateVisualization(tabNumber) {
+            const visPanel = document.getElementById('visualization-panel');
+            visPanel.classList.remove('danger-pulse');
+            visPanel.style.borderColor = '#00ff7f30';
+            visPanel.innerHTML = ''; // Limpia el contenido
+
+            let contentHTML = '';
+
+            switch (tabNumber) {
+                case 3: // Propiedades Químicas: VoD
+                    visPanel.style.borderColor = '#FFD70080';
+                    contentHTML = `
+                        <div class="text-2xl text-tnt-primary mb-2 font-bold">PARÁMETRO CLAVE: ENERGÍA EXPLOSIVA</div>
+                        <div class="text-4xl text-tnt-primary font-extrabold mt-1">6,900 m/s</div>
+                        <div class="text-xl text-gray-400">Velocidad de Detonación (VoD)</div>
+                        <div class="text-sm text-gray-500 mt-2">VoD relativamente baja, lo que la hace estable y adecuada para carcasas.</div>
+                    `;
+                    break;
+
+                case 4: // Riesgos y Peligros: Alerta Máxima
+                    visPanel.classList.add('danger-pulse');
+                    visPanel.style.borderColor = '#FF0033';
+                    contentHTML = `
+                        <div class="text-6xl text-tnt-danger font-extrabold uppercase animate-pulse">!! DETONACIÓN !!</div>
+                        <div class="text-2xl text-tnt-primary mt-2 font-bold">CLASE 1.1D - RIESGO DE EXPLOSIÓN EN MASA</div>
+                        <div class="text-sm text-gray-400 mt-2">ALERTA: La iniciación causará daños catastróficos inmediatos.</div>
+                    `;
+                    break;
+
+                case 5: // Protocolos de Seguridad: Candado + Radio de Seguridad
+                    contentHTML = `
+                        <div class="text-5xl text-tnt-safe mb-2">🛡️</div>
+                        <div class="text-xl text-tnt-safe font-bold">SIMULACIÓN DE RADIO DE SEGURIDAD</div>
+                        <div class="text-sm text-gray-400">Utilice la calculadora en la sección para determinar la zona de exclusión.</div>
+                    `;
+                    break;
+                
+                case 10: // JUEGO
+                    visPanel.style.borderColor = '#00e6e6';
+                    contentHTML = `
+                        <div class="text-5xl text-game-accent mb-2">🕹️</div>
+                        <div class="text-xl text-game-accent font-bold">SIMULADOR DE PRESIÓN CRÍTICA</div>
+                        <div class="text-sm text-gray-400">Entrenamiento de memoria y reacción bajo estrés temporal.</div>
+                    `;
+                    // Asegura que los displays del juego se reinicien al entrar en la pestaña.
+                    resetGame(); 
+                    break;
+
+                default: // Default 
+                    visPanel.style.borderColor = '#00ff7f30';
+                    contentHTML = `
+                        <div class="text-4xl text-dossier-accent mb-2">:: DATA LOG ::</div>
+                        <div class="text-xl text-gray-400 font-bold">CONSULTA DE PARÁMETROS BÁSICOS</div>
+                        <div class="text-sm text-gray-500 mt-2">Archivos de referencia consultados. Sin alarmas críticas activas.</div>
+                    `;
+                    break;
+            }
+
+            visPanel.innerHTML = contentHTML;
+        }
+
+        // Inicialización
+        window.onload = function() {
+            switchTab(1); // Carga la primera pestaña al inicio
+            calculateDistance(); // Ejecuta el cálculo inicial al cargar
+            if(codeInput) codeInput.setAttribute('oninput', 'this.value = this.value.slice(0, 4);');
+        };
+    </script>
+</body>
+</html>
+
